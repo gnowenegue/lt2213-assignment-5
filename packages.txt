@@ -1,6 +1,7 @@
 ipykernel
 nbstripout
 pre-commit
+ipywidgets
 
 torch
 torchvision
