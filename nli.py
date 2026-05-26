@@ -156,12 +156,15 @@ print("Encoded IDs:", tokenizer.encode(ex['premise']).ids)
 import torch
 
 def max_pooling(input_tensor):
-    output_tensor = ...
+    # input_tensor has shape: (batch_size, num_words, dimensions)
+    # we take the maximum value along the words dimension (dim=1)
+    # torch.max returns a tuple of (values, indices), we only need the values
+    output_tensor, _ = torch.max(input_tensor, dim=1)
     return output_tensor
 
-# test_unpooled = torch.rand(32, 100, 512)
-# test_pooled = pooling(test_unpooled)
-# print(test_pooled.size()) # should be torch.Size([32, 512])
+test_unpooled = torch.rand(32, 100, 512)
+test_pooled = max_pooling(test_unpooled)
+print(test_pooled.size()) # should be torch.Size([32, 512])
 
 
 # %% [markdown]
