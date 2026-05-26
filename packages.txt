@@ -1,3 +1,8 @@
 ipykernel
 nbstripout
 pre-commit
+
+torch
+torchvision
+datasets
+tokenizers
