@@ -180,14 +180,20 @@ print(test_pooled.size()) # should be torch.Size([32, 512])
 
 # %%
 def combine_premise_and_hypothesis(hypothesis, premise):
-    output = ...
+    # P times H
+    product = premise * hypothesis
+
+    # the absolute value of P minus H
+    abs_diff = torch.abs(premise - hypothesis)
+
+    output = torch.cat((hypothesis, premise, product, abs_diff), dim=1)
     return output
 
-# test_hypothesis = test_pooled.clone()
-# test_premise = test_pooled.clone()
-# test_combined = combine_premise_and_hypothesis(test_hypothesis, test_premise)
-# print(test_combined.size()) # should be torch.Size([32, 400])
 
+test_hypothesis = test_pooled.clone()
+test_premise = test_pooled.clone()
+test_combined = combine_premise_and_hypothesis(test_hypothesis, test_premise)
+print(test_combined.size())  # should be torch.Size([32, 400])
 
 # %% [markdown]
 # ### Creating the model
