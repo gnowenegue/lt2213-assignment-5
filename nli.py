@@ -205,23 +205,64 @@ print(test_combined.size())  # should be torch.Size([32, 400])
 # %%
 import torch.nn as nn
 
+# model hyperparameters
+EMBEDDING_DIM = 128
+HIDDEN_SIZE = 128
+NUM_CLASSES = 3
+DROPOUT_RATE = 0.1
+
+
 class SNLIModel(nn.Module):
-    def __init__(self, ...):
-        # your code goes here
-        self.embeddings = ...
-        self.rnn = ...
-        self.classifier = ...
-        
+    def __init__(
+        self,
+        vocab_size,
+        embedding_dim=EMBEDDING_DIM,
+        hidden_size=HIDDEN_SIZE,
+        num_classes=NUM_CLASSES,
+        dropout_rate=DROPOUT_RATE
+    ):
+        super(SNLIModel, self).__init__()
+
+        # embed token ids to dense vectors
+        self.embeddings = nn.Embedding(
+            vocab_size, embedding_dim, padding_idx=0)
+
+        # shared bidirectional LSTM encoder
+        self.rnn = nn.LSTM(
+            input_size=embedding_dim,
+            hidden_size=hidden_size,
+            bidirectional=True,
+            batch_first=True
+        )
+
+        # dropout to prevent overfitting
+        self.dropout = nn.Dropout(dropout_rate)
+
+        # linear classifier projecting combined representation to output classes
+        # hidden_size * 2 because the LSTM is bidirectional
+        # multiplied by 4 because we concatenate 4 vectors: P, H, |P-H|, and P*H
+        self.classifier = nn.Linear(4 * (hidden_size * 2), num_classes)
+
     def forward(self, premise, hypothesis):
-        p = ...
-        h = ...
-        
-        p_pooled = pooling(...)
-        h_pooled = pooling(...)
-        
-        ph_representation = combine_premise_and_hypothesis(...)
-        predictions = ...
-        
+        # step 0: look up embeddings for both sentences
+        p_emb = self.embeddings(premise)
+        h_emb = self.embeddings(hypothesis)
+
+        # step 1: encode both sentences using the shared BiLSTM
+        p_encoded, _ = self.rnn(p_emb)
+        h_encoded, _ = self.rnn(h_emb)
+
+        # step 2: max pool over the words of both encoded sentences
+        p_pooled = max_pooling(p_encoded)
+        h_pooled = max_pooling(h_encoded)
+
+        # step 3: combine premise and hypothesis representations
+        ph_representation = combine_premise_and_hypothesis(p_pooled, h_pooled)
+
+        # step 4: apply dropout and predict relationship classes
+        ph_representation = self.dropout(ph_representation)
+        predictions = self.classifier(ph_representation)
+
         return predictions
 
 
