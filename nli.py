@@ -126,6 +126,8 @@ print("Encoded IDs:", tokenizer.encode(ex['premise']).ids)
 #     3) Combine the encoded premise and encoded hypothesis into one representation
 #     4) Predict the relationship 
 
+# %%
+
 # %% [markdown]
 # ### Creating a representation of a sentence
 #
@@ -168,6 +170,9 @@ print(test_pooled.size()) # should be torch.Size([32, 512])
 
 
 # %% [markdown]
+# output:torch.Size([32, 512])
+
+# %% [markdown]
 # ### Combining sentence representations
 #
 # Next, we need to combine the premise and hypothesis into one representation. We will do this by concatenating four tensors (the final size of our tensor $X$ should be ``(batch_size, 4d)`` where ``d`` is the number of dimensions that you use): 
@@ -194,6 +199,9 @@ test_hypothesis = test_pooled.clone()
 test_premise = test_pooled.clone()
 test_combined = combine_premise_and_hypothesis(test_hypothesis, test_premise)
 print(test_combined.size())  # should be torch.Size([32, 400])
+
+# %% [markdown]
+# Output:torch.Size([32, 2048])
 
 # %% [markdown]
 # ### Creating the model
@@ -275,44 +283,232 @@ class SNLIModel(nn.Module):
 # **Tip for efficiency:** *when developing your model, try training and testing the model on one batch (for each epoch) of data to make sure everything works! It's very annoying if you train for N epochs to find out that something went wrong when testing the model, or to find that something goes wrong when moving from epoch 0 to epoch 1.*
 
 # %%
+from torch.nn.utils.rnn import pad_sequence
+
+def tokenize_and_pad(sentences):
+    # tokenize each sentence and pad to the same length within the batch
+    encoded = [torch.tensor(tokenizer.encode(s).ids) for s in sentences]
+    return pad_sequence(encoded, batch_first=True, padding_value=0)
+
 epochs = 2
 batch_size = 32
+label_map = {"entailment": 0, "neutral": 1, "contradiction": 2}
+label_names = {0: "entailment", 1: "neutral", 2: "contradiction"}
 
-train_iter = dataset['train'].iter(batch_size=batch_size)
+loss_function = nn.CrossEntropyLoss()
+model = SNLIModel(vocab_size=len(tokenizer.get_vocab()))
+optimizer = torch.optim.Adam(model.parameters())
 
-loss_function = ...
-optimizer = ...
-model = ...
+for epoch in range(epochs):
+    model.train()
+    train_iter = dataset['train'].iter(batch_size=batch_size)
+    total_loss = 0
+    batch_count = 0
 
-for _ in range(epochs):
     for batch in train_iter:
-    # train model
-        ...
-    
-# test model after all epochs are completed
+        # skip examples with missing fields or unknown labels
+        valid = [
+            (p, h, l)
+            for p, h, l in zip(batch['premise'], batch['hypothesis'], batch['label'])
+            if l in label_map and p is not None and h is not None
+        ]
+        if not valid:
+            continue
+
+        premises, hypotheses, batch_labels = zip(*valid)
+
+        # tokenize and pad premises and hypotheses
+        p_tensor = tokenize_and_pad(premises)
+        h_tensor = tokenize_and_pad(hypotheses)
+        l_tensor = torch.tensor([label_map[l] for l in batch_labels])
+
+        optimizer.zero_grad()
+        predictions = model(p_tensor, h_tensor)
+        loss = loss_function(predictions, l_tensor)
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        batch_count += 1
+
+        if batch_count % 500 == 0:
+            print(f"Epoch {epoch+1} | Batch {batch_count} | Avg loss: {total_loss / batch_count:.4f}")
+
+    print(f"Epoch {epoch+1} complete | Avg loss: {total_loss / batch_count:.4f}")
+
+print("Training complete.")
+
+# %% [markdown]
+# Output: MLTGPU 
+#
+# Epoch 1 | Batch 500 | Avg loss: 0.9560
+# Epoch 1 | Batch 1000 | Avg loss: 0.8953
+# Epoch 1 | Batch 1500 | Avg loss: 0.8565
+# Epoch 1 | Batch 2000 | Avg loss: 0.8303
+# Epoch 1 | Batch 2500 | Avg loss: 0.8139
+# Epoch 1 | Batch 3000 | Avg loss: 0.7970
+# Epoch 1 | Batch 3500 | Avg loss: 0.7848
+# Epoch 1 | Batch 4000 | Avg loss: 0.7747
+# Epoch 1 | Batch 4500 | Avg loss: 0.7651
+# Epoch 1 | Batch 5000 | Avg loss: 0.7576
+# Epoch 1 | Batch 5500 | Avg loss: 0.7513
+# Epoch 1 | Batch 6000 | Avg loss: 0.7444
+# Epoch 1 | Batch 6500 | Avg loss: 0.7387
+# Epoch 1 | Batch 7000 | Avg loss: 0.7332
+# Epoch 1 | Batch 7500 | Avg loss: 0.7286
+# Epoch 1 | Batch 8000 | Avg loss: 0.7243
+# Epoch 1 | Batch 8500 | Avg loss: 0.7202
+# Epoch 1 | Batch 9000 | Avg loss: 0.7158
+# Epoch 1 | Batch 9500 | Avg loss: 0.7128
+# Epoch 1 | Batch 10000 | Avg loss: 0.7096
+# Epoch 1 | Batch 10500 | Avg loss: 0.7067
+# Epoch 1 | Batch 11000 | Avg loss: 0.7030
+# Epoch 1 | Batch 11500 | Avg loss: 0.6998
+# Epoch 1 | Batch 12000 | Avg loss: 0.6969
+# Epoch 1 | Batch 12500 | Avg loss: 0.6944
+# Epoch 1 | Batch 13000 | Avg loss: 0.6925
+# Epoch 1 | Batch 13500 | Avg loss: 0.6904
+# Epoch 1 | Batch 14000 | Avg loss: 0.6879
+# Epoch 1 | Batch 14500 | Avg loss: 0.6858
+# Epoch 1 | Batch 15000 | Avg loss: 0.6835
+# Epoch 1 | Batch 15500 | Avg loss: 0.6814
+# Epoch 1 | Batch 16000 | Avg loss: 0.6793
+# Epoch 1 | Batch 16500 | Avg loss: 0.6776
+# Epoch 1 | Batch 17000 | Avg loss: 0.6755
+# Epoch 1 complete | Avg loss: 0.6747
+# Epoch 2 | Batch 500 | Avg loss: 0.6105
+# Epoch 2 | Batch 1000 | Avg loss: 0.6104
+# Epoch 2 | Batch 1500 | Avg loss: 0.6083
+# Epoch 2 | Batch 2000 | Avg loss: 0.6037
+# Epoch 2 | Batch 2500 | Avg loss: 0.6032
+# Epoch 2 | Batch 3000 | Avg loss: 0.5999
+# Epoch 2 | Batch 3500 | Avg loss: 0.5998
+# Epoch 2 | Batch 4000 | Avg loss: 0.5993
+# Epoch 2 | Batch 4500 | Avg loss: 0.5979
+# Epoch 2 | Batch 5000 | Avg loss: 0.5968
+# Epoch 2 | Batch 5500 | Avg loss: 0.5972
+# Epoch 2 | Batch 6000 | Avg loss: 0.5959
+# Epoch 2 | Batch 6500 | Avg loss: 0.5954
+# Epoch 2 | Batch 7000 | Avg loss: 0.5941
+# Epoch 2 | Batch 7500 | Avg loss: 0.5931
+# Epoch 2 | Batch 8000 | Avg loss: 0.5919
+# Epoch 2 | Batch 8500 | Avg loss: 0.5913
+# Epoch 2 | Batch 9000 | Avg loss: 0.5904
+# Epoch 2 | Batch 9500 | Avg loss: 0.5899
+# Epoch 2 | Batch 10000 | Avg loss: 0.5891
+# Epoch 2 | Batch 10500 | Avg loss: 0.5884
+# Epoch 2 | Batch 11000 | Avg loss: 0.5871
+# Epoch 2 | Batch 11500 | Avg loss: 0.5864
+# Epoch 2 | Batch 12000 | Avg loss: 0.5856
+# Epoch 2 | Batch 12500 | Avg loss: 0.5853
+# Epoch 2 | Batch 13000 | Avg loss: 0.5850
+# Epoch 2 | Batch 13500 | Avg loss: 0.5847
+# Epoch 2 | Batch 14000 | Avg loss: 0.5837
+# Epoch 2 | Batch 14500 | Avg loss: 0.5833
+# Epoch 2 | Batch 15000 | Avg loss: 0.5826
+# Epoch 2 | Batch 15500 | Avg loss: 0.5820
+# Epoch 2 | Batch 16000 | Avg loss: 0.5814
+# Epoch 2 | Batch 16500 | Avg loss: 0.5810
+# Epoch 2 | Batch 17000 | Avg loss: 0.5802
+# Epoch 2 complete | Avg loss: 0.5800
+# Training complete.
 
 # %% [markdown]
 # ## 4. Testing
 #
 # Test the model on the testset. For each example in the test set, compute a prediction from the model (`entailment`, `contradiction` or `neutral`). Compute precision, recall, and F1 score for each label. **[10 marks]**
 
+# %%
+from sklearn.metrics import classification_report
+
+model.eval()
+
+all_preds = []
+all_true = []
+
+# run inference on the full test set without computing gradients
+with torch.no_grad():
+    for batch in dataset['test'].iter(batch_size=batch_size):
+        # skip examples with missing fields or unknown labels
+        valid = [
+            (p, h, l)
+            for p, h, l in zip(batch['premise'], batch['hypothesis'], batch['label'])
+            if l in label_map and p is not None and h is not None
+        ]
+        if not valid:
+            continue
+
+        premises, hypotheses, batch_labels = zip(*valid)
+
+        p_tensor = tokenize_and_pad(premises)
+        h_tensor = tokenize_and_pad(hypotheses)
+
+        # take the class with the highest logit as the prediction
+        predictions = model(p_tensor, h_tensor)
+        pred_labels = torch.argmax(predictions, dim=1).tolist()
+        true_labels = [label_map[l] for l in batch_labels]
+
+        all_preds.extend(pred_labels)
+        all_true.extend(true_labels)
+
+print(classification_report(
+    all_true,
+    all_preds,
+    target_names=["entailment", "neutral", "contradiction"]
+))
+
+# %% [markdown]
+# Output: MLTGPU
+#
+#              precision    recall  f1-score   support
+#
+#    entailment       0.79      0.85      0.82      3368
+#       neutral       0.76      0.69      0.72      3219
+# contradiction       0.79      0.80      0.80      3237
+#
+#      accuracy                           0.78      9824
+#     macro avg       0.78      0.78      0.78      9824
+#  weighted avg       0.78      0.78      0.78      9824
+
 # %% [markdown]
 # Suggest a _baseline_ that we can compare our model against **[2 marks]**
 
 # %% [markdown]
 # **Your answer should go here**
+#
+# A strong and simple baseline is a majority class baseline, where we always predict the most frequent label in the training data. Since SNLI is roughly balanced across entailment, contradiction, and neutral, this gives about ~33% accuracy, which serves as a lower bound that any trained model should outperform.
+# A slightly stronger baseline is a bag-of-words(BOW) approach combined with logistic regression. In this method we represent the premise and hypothesis using averaged word embeddings (such as Glove or even random embeddings), concatenate them, and train a logistic regression classifier on top. This baseline is fast to train and typically achieves around 65 - 70% accuracy on SNLI, providing a good comparison point to show that more advanced models like a BiLSTM with max-pooling (~78%) are learning deeper sentence structure rather than just relying on surface-level word overlap.
+#
 
 # %% [markdown]
 # Suggest some ways (other than using a baseline) in which we can analyse the models performance **[3 marks]**.
 
 # %% [markdown]
 # **Your answer should go here**
+#
+# We can analyse model performance in few ways beyond just overall accuracy or baseline comparison
+#
+# One approach is per-class error analysis, where we look at the confusion matrix to understand which labels are most often confused with each other, such as neutral vs entailment. We can also manually inspect incorrectly predicted examples to detect patterns in the errors, for example whether the models struggles with negation, numerical reasoning or longer and more complex sentences.
+#
+# Another useful method is sentence length analysis, where test examples are grouped into buckets based on the length of the premise or hypothesis. We then measure accuracy within each bucket to see whether performance drops for longer inputs, which is a common issue for models that rely on fixed- size sentence representations.
+#
+# Finally, we can do stress testing on challenging or adversarial examples, such as datasets designed to test negation, antonyms, or world knowledge. This helps us understand whether the model is truly learning inference or simply relying on shallow cues like word overlap.
 
 # %% [markdown]
 # Suggest some ways to improve the model **[3 marks]**.
 
 # %% [markdown]
 # **Your answer should go here**
+#
+# One way to improve the model is to use pre-trained word embeddings like Glove or fastText instead of randomly initialised embeddings. These embeddings already capture rich semantic relationships between words, which gives the model a much better starting point and usually improves performance on SNLI by a few percentage points.
+#
+# Another important is to include an attention mechanism instead of relying only on max-pooling. For example, a cross-attention layer can allow the hypothesis to attend to relevant parts of the premise (and vice versa), helping the model focus on important word alignments rather than compressing the entire sentence into a single fixed vector.
+#
+# We can also improve performance by using a stronger classifier and better training strategy. Instead of a single linear layer, a small multi-layer perceptron (MLP)with a non-linear activation (like ReLU) and dropout can capture more complex decision boundaries. In addition,training for more epochs and using learning rate scheduling e.g., reducing the learning rate when validation performance stops improving can help the model converge better.
+#
+# Finally a more advanced improvement is to fine-tune a pretrained transformer model like BERT on SNLI, which already encodes deep contextual knowledge and typically achieves much higher accuracy compared to LSTM-based models.
+#
+#
 
 # %% [markdown]
 # ## Readings
@@ -329,7 +525,13 @@ for _ in range(epochs):
 #
 # Write below your general thoughts, experiences, or reflections on how you worked on this lab.
 
-# %%
+# %% [markdown]
+# working on this lab helped us understand how NLI models actually work in practice, not just in theory. It was interesting to see how even a relatively simple model like a  BiLSTM can already give decent results, but still has clear limitations compared to more advanced pretrained models like BERT.
+#
+# We also got a better idea of why baselines are important. At first it felt like just an extra step, but comparing against a simple baseline made it much clearer whether the model was actually learning something useful. Doing error analysis was also quite helpful because it showed that the model sometimes depends on simple patterns like word overlap and can struggle with things like negation or more complex sentences.
+#
+# Overall the lab was useful for getting hands on experience with training and evaluating NLP models, and it made us think more about what the model is actually learning rather than just looking at accuracy numbers.
+#
 
 # %% [markdown]
 # ## Statement of contribution
